@@ -1,0 +1,156 @@
+
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f7f9fb;
+  color: #333;
+  padding: 20px;
+  max-width: 800px;
+  margin: auto;
+}
+
+input[type="text"], input[type="date"] {
+  padding: 10px;
+  font-size: 16px;
+  margin: 5px 5px 15px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+button {
+  padding: 10px 15px;
+  margin: 5px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  border-radius: 5px;
+  background-color: #6c9bd1;
+  color: white;
+}
+
+button:hover {
+  background-color: #557eb0;
+}
+
+#filterButtons button,
+#sortButtons button {
+  background-color: #d8eafd;
+  color: #333;
+}
+
+#filterButtons button:hover,
+#sortButtons button:hover {
+  background-color: #bdd9f8;
+}
+
+#taskList {
+  list-style: none;
+  padding: 0;
+}
+
+#taskList li {
+  background: white;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-left: 5px solid #6c9bd1;
+  border-radius: 5px;
+  position: relative;
+}
+
+.task-buttons {
+  margin-top: 10px;
+}
+
+.task-buttons button {
+  background-color: #eee;
+  color: #333;
+}
+
+.task-buttons button:hover {
+  background-color: #ddd;
+}
+
+/* サブタスク */
+.subtask-list {
+  padding-left: 20px;
+  margin-top: 10px;
+}
+
+.subtask-list button {
+  margin-left: 4px;
+}
+
+
+.subtask-progress {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* 日付ごとの色分け */
+.due-past {
+  color: red;
+  font-weight: bold;
+}
+
+.due-today {
+  color: orange;
+  font-weight: bold;
+}
+
+.due-soon {
+  color: goldenrod;
+}
+
+.due-later {
+  color: green;
+}
+
+/* 進捗バー */
+#progressContainer {
+  margin-bottom: 20px;
+}
+
+#progressBar {
+  width: 100%;
+  height: 20px;
+  background-color: #e0e0e0;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+#progressFill {
+  height: 100%;
+  background-color: #6c9bd1;
+  width: 0;
+  transition: width 0.3s ease;
+}
+
+#progressText {
+  text-align: right;
+  font-size: 14px;
+  color: #666;
+}
+
+.tag-container {
+  margin-top: 5px;
+}
+
+.tag {
+  display: inline-block;
+  background-color: #ddd;
+  color: #333;
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  font-size: 0.8em;
+}
+
+.delete-tag:hover {
+  color: darkred;
+}
+
+#progressContainer{
+  padding-top: 24px;
+}

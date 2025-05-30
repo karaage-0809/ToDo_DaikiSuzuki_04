@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ToDoリスト</title>
+  <link rel="stylesheet" href="css/reset.css" />
+  <link rel="stylesheet" href="css/toDo.css" />
+</head>
+
+<body>
+
+  <input type="text" id="taskInput" placeholder="やることを入力" />
+  <input type="date" id="dueDate" />
+  <button id="addButton">追加</button>
+  <input type="text" id="searchInput" placeholder="タスクを検索" />
+  <!-- タグ入力(実装予定) -->
+  <div class="tag-container">
+    <input type="text" id="tagInput" placeholder="タグ（カンマ区切りで複数可）" />
+  </div>
+  <!-- フィルター -->
+  <div id="filterButtons">
+    <button id="showAll">全て</button>
+    <button id="showCompleted">完了</button>
+    <button id="showUncompleted">未完了</button>
+  </div>
+
+  <!-- 完了率ソート -->
+  <div id="sortButtons">
+    <button id="sortByProgressAsc">完了率が低い順</button>
+    <button id="sortByProgressDesc">完了率が高い順</button>
+  </div>
+
+  <!-- 進捗バー -->
+  <div id="progressContainer">
+    <div id="progressBar">
+      <div id="progressFill"></div>
+    </div>
+    <div id="progressText">進捗: 0%</div>
+  </div>
+
+  <ul id="taskList"></ul>
+
+  <script>
+    // テキストの正規化（検索用）
+    function normalizeText(text) {
+      return text
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[ァ-ヶ]/g, ch =>
+          String.fromCharCode(ch.charCodeAt(0) - 0x60)
+        );
+    }
+
+    const taskInput = document.getElementById('taskInput');
+    const dueDateInput = document.getElementById('dueDate');
+    const addButton = document.getElementById('addButton');
+    const taskList = document.getElementById('taskList');
+    const tags = document.getElementById('tagInput').value
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag !== '');
+
+
+    let isEditing = false;
+    let editingId = null;
+    let currentFilter = 'all';
+
+    function saveTasks(tasks) {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    function getTasks() {
+      return JSON.parse(localStorage.getItem('tasks')) || [];
+    }
+
+    // 全体進捗バーを更新
+    function updateProgressBar() {
+      const tasks = getTasks();
+      let total = 0;
+      let completed = 0;
+
+      tasks.forEach(task => {
+        if (task.subtasks && task.subtasks.length > 0) {
+          total += task.subtasks.length;
+          completed += task.subtasks.filter(sub => sub.completed).length;
+        } else {
+          total += 1;
+          if (task.completed) completed += 1;
+        }
+      });
+
+      const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+      document.getElementById('progressFill').style.width = `${rate}%`;
+      document.getElementById('progressText').textContent = `進捗: ${rate}%`;
+    }
+
+    // タスクを読み込んで表示
+    function loadTasks(filter = 'all', searchQuery = '') {
+      const tasks = getTasks();
+      taskList.innerHTML = '';
+
+      tasks.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+
+      tasks.forEach(task => {
+        if (filter === 'completed' && !task.completed) return;
+        if (filter === 'uncompleted' && task.completed) return;
+
+        if (searchQuery && !normalizeText(task.text).includes(normalizeText(searchQuery))) return;
+
+        const li = document.createElement('li');
+        li.textContent = task.text;
+        if (task.completed) {
+          li.classList.add('completed');
+          li.style.textDecoration = 'line-through';
+        }
+
+        // 期日表示
+        const dueDateElement = document.createElement('span');
+        dueDateElement.textContent = task.dueDate ? `（期限: ${task.dueDate}）` : '';
+
+        if (task.dueDate) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const due = new Date(task.dueDate);
+          due.setHours(0, 0, 0, 0);
+          const diffDays = (due - today) / (1000 * 60 * 60 * 24);
+
+          if (due < today) {
+            // 過去
+            dueDateElement.classList.add('due-past');
+          } else if (diffDays === 0) {
+            dueDateElement.classList.add('due-today');
+          } else if (diffDays <= 3) {
+            dueDateElement.classList.add('due-soon');
+          } else {
+            dueDateElement.classList.add('due-later');
+          }
+        }
+
+        li.appendChild(dueDateElement);
+
+        // ボタンコンテナ
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'task-buttons';
+
+        const completeButton = document.createElement('button');
+        completeButton.textContent = '完了';
+        completeButton.addEventListener('click', () => completeTask(task.id));
+
+        const editButton = document.createElement('button');
+        editButton.textContent = '編集';
+        editButton.addEventListener('click', () => editTask(task.id));
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '削除';
+        deleteButton.addEventListener('click', () => deleteTask(task.id));
+
+        function completeTask(taskId) {
+        const tasks = getTasks();
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+        task.completed = !task.completed; // 完了状態をトグル
+        saveTasks(tasks);
+        loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+        }
+      }
+
+        buttonContainer.appendChild(completeButton);
+        buttonContainer.appendChild(editButton);
+        buttonContainer.appendChild(deleteButton);
+        li.appendChild(buttonContainer);
+
+        // サブタスクリスト
+        const subtaskList = document.createElement('ul');
+        subtaskList.classList.add('subtask-list');
+
+        if (task.subtasks && task.subtasks.length > 0) {
+          task.subtasks.forEach(subtask => {
+            const subLi = document.createElement('li');
+
+            // サブタスクテキスト要素
+            const subtaskText = document.createElement('span');
+            subtaskText.textContent = subtask.text;
+            if (subtask.completed) {
+              subtaskText.style.textDecoration = 'line-through';
+              subtaskText.style.color = '#aaa';
+            }
+            subLi.appendChild(subtaskText);
+
+            // 完了ボタン
+            const subtaskCompleteBtn = document.createElement('button');
+            subtaskCompleteBtn.textContent = '✓';
+            subtaskCompleteBtn.style.marginLeft = '8px';
+            subtaskCompleteBtn.addEventListener('click', () => {
+              toggleSubtaskComplete(task.id, subtask.id);
+            });
+            subLi.appendChild(subtaskCompleteBtn);
+
+            // 編集ボタン
+            const subtaskEditBtn = document.createElement('button');
+            subtaskEditBtn.textContent = '編集';
+            subtaskEditBtn.style.marginLeft = '4px';
+            subtaskEditBtn.addEventListener('click', () => {
+              const newText = prompt('サブタスクの新しい内容を入力してください：', subtask.text);
+              if (newText !== null && newText.trim() !== '') {
+                editSubtask(task.id, subtask.id, newText.trim());
+              }
+            });
+            subLi.appendChild(subtaskEditBtn);
+
+            // 削除ボタン
+            const subtaskDeleteBtn = document.createElement('button');
+            subtaskDeleteBtn.textContent = '削除';
+            subtaskDeleteBtn.style.marginLeft = '4px';
+            subtaskDeleteBtn.addEventListener('click', () => {
+              const confirmDelete = confirm('このサブタスクを削除しますか？');
+              if (confirmDelete) {
+                deleteSubtask(task.id, subtask.id);
+              }
+            });
+            subLi.appendChild(subtaskDeleteBtn);
+
+            subtaskList.appendChild(subLi);
+          });
+        }
+
+        // サブタスク進捗表示
+        if (task.subtasks.length > 0) {
+          const completedCount = task.subtasks.filter(st => st.completed).length;
+          const progressText = document.createElement('div');
+          const percent = Math.round((completedCount / task.subtasks.length) * 100);
+          progressText.textContent = `進捗: ${completedCount} / ${task.subtasks.length} 完了（${percent}%）`;
+          progressText.classList.add('subtask-progress');
+          li.appendChild(progressText);
+        }
+
+        //タグ表示・・・のはずだが
+        console.log('Task:', task.text);
+        console.log('Tags:', task.tags);
+
+        if (task.tags && task.tags.length > 0) {
+          const tagContainer = document.createElement('div');
+          tagContainer.classList.add('tag-container');
+
+          task.tags.forEach((tag, index) => {
+            const tagSpan = document.createElement('span');
+            tagSpan.textContent = `#${tag}`;
+            tagSpan.classList.add('tag');
+
+            // タグクリックでフィルター機能
+            tagSpan.addEventListener('click', () => {
+              document.getElementById('searchInput').value = tag;
+              loadTasks(currentFilter, tag); // 再読み込み
+            });
+
+            // ✅ タグ削除ボタン
+            const deleteTagBtn = document.createElement('button');
+            deleteTagBtn.textContent = ' ×';
+            deleteTagBtn.classList.add('delete-tag');
+            deleteTagBtn.style.marginLeft = '4px';
+            deleteTagBtn.style.cursor = 'pointer';
+            deleteTagBtn.style.background = 'none';
+            deleteTagBtn.style.border = 'none';
+            deleteTagBtn.style.color = 'red';
+
+            deleteTagBtn.addEventListener('click', (e) => {
+              e.stopPropagation(); // フィルタクリックと競合しないように
+              const tasks = getTasks();
+              const currentTask = tasks.find(t => t.id === task.id);
+              if (currentTask) {
+                currentTask.tags.splice(index, 1); // 正しいインデックスで削除
+                saveTasks(tasks);
+                loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+              }
+            });
+
+            tagSpan.appendChild(deleteTagBtn);
+            tagContainer.appendChild(tagSpan);
+          });
+
+          li.appendChild(tagContainer);
+        }
+
+        li.appendChild(subtaskList);
+
+        // サブタスク追加ボタン
+        const addSubtaskBtn = document.createElement('button');
+        addSubtaskBtn.textContent = 'サブタスク追加';
+        addSubtaskBtn.addEventListener('click', () => {
+          const subtaskText = prompt('サブタスクを入力してください:');
+          if (subtaskText) {
+            addSubtask(task.id, subtaskText);
+          }
+        });
+        li.appendChild(addSubtaskBtn);
+
+        taskList.appendChild(li);
+
+        updateProgressBar();
+      });
+    }
+
+    // サブタスク追加
+    function addSubtask(taskId, subtaskText) {
+      const tasks = getTasks();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task.subtasks) task.subtasks = [];
+
+      task.subtasks.push({
+        id: Date.now(),
+        text: subtaskText,
+        completed: false
+      });
+
+      saveTasks(tasks);
+      loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+      updateProgressBar();
+    }
+
+    //サブタスク編集　処理
+    function editSubtask(taskId, subtaskId, newText) {
+      const tasks = getTasks();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task || !task.subtasks) return;
+
+      const subtask = task.subtasks.find(s => s.id === subtaskId);
+      if (subtask) {
+        subtask.text = newText;
+        saveTasks(tasks);
+        loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+      }
+    }
+
+    //サブタスク削除　処理
+    function deleteSubtask(taskId, subtaskId) {
+      const tasks = getTasks();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task || !task.subtasks) return;
+
+      task.subtasks = task.subtasks.filter(s => s.id !== subtaskId);
+      saveTasks(tasks);
+      loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+      updateProgressBar();
+    }
+
+    //タグ追加
+
+
+    // タスク完了切り替え
+    function completeTask(id) {
+      const tasks = getTasks();
+      const index = tasks.findIndex(task => task.id === id);
+      if (index !== -1) {
+        tasks[index].completed = !tasks[index].completed;
+        saveTasks(tasks);
+        loadTasks(currentFilter, searchQuery);
+        updateProgressBar();
+      }
+    }
+
+    function toggleSubtaskComplete(taskId, subtaskId) {
+      const tasks = getTasks();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task || !task.subtasks) return;
+
+      const subtask = task.subtasks.find(s => s.id === subtaskId);
+      if (subtask) {
+        subtask.completed = !subtask.completed;
+        saveTasks(tasks);
+        loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+      }
+    }
+
+    // タスク削除
+    function deleteTask(id) {
+      const tasks = getTasks();
+      const newTasks = tasks.filter(task => task.id !== id);
+      saveTasks(newTasks);
+      loadTasks(currentFilter);
+      updateProgressBar();
+    }
+
+    // タスク編集
+    function editTask(id) {
+      const tasks = getTasks();
+      const task = tasks.find(task => task.id === id);
+      if (task) {
+        taskInput.value = task.text;
+        dueDateInput.value = task.dueDate || '';
+        isEditing = true;
+        editingId = id;
+        addButton.textContent = '編集を保存';
+        updateProgressBar();
+      }
+    }
+
+    // 追加・編集ボタンの処理
+    addButton.addEventListener('click', () => {
+      const text = taskInput.value.trim();
+      const dueDate = dueDateInput.value;
+      const tagInput = document.getElementById('tagInput').value;
+
+      if (!text) {
+        alert('やることを入力してください。');
+        return;
+      }
+
+      const tags = tagInput
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag !== '');
+
+      const tasks = getTasks();
+
+      if (isEditing && editingId !== null) {
+        const task = tasks.find(t => t.id === editingId);
+        if (task) {
+          task.text = text;
+          task.dueDate = dueDate;
+          task.tags = tags;
+        }
+        isEditing = false;
+        editingId = null;
+        addButton.textContent = '追加';
+      } else {
+        tasks.push({
+          id: Date.now(),
+          text: text,
+          dueDate: dueDate,
+          completed: false,
+          subtasks: [],
+          tags: tags
+        });
+      }
+
+      saveTasks(tasks);
+      taskInput.value = '';
+      dueDateInput.value = '';
+      document.getElementById('tagInput').value = '';
+      loadTasks(currentFilter, document.getElementById('searchInput').value.trim());
+      updateProgressBar();
+    });
+
+
+    // フィルターボタン
+    document.getElementById('showAll').addEventListener('click', () => {
+      currentFilter = 'all';
+      loadTasks(currentFilter);
+    });
+
+    document.getElementById('showCompleted').addEventListener('click', () => {
+      currentFilter = 'completed';
+      loadTasks(currentFilter);
+    });
+
+    document.getElementById('showUncompleted').addEventListener('click', () => {
+      currentFilter = 'uncompleted';
+      loadTasks(currentFilter);
+    });
+
+    // 検索
+    document.getElementById('searchInput').addEventListener('input', function () {
+      loadTasks(currentFilter, this.value.trim());
+    });
+
+    // タスクの完了率を計算
+    function getCompletionRate(task) {
+      if (!task.subtasks || task.subtasks.length === 0) {
+        return task.completed ? 100 : 0;
+      }
+      const total = task.subtasks.length;
+      const done = task.subtasks.filter(sub => sub.completed).length;
+      return Math.round((done / total) * 100);
+    }
+
+    // 並び替えボタン
+    document.getElementById('sortByProgressAsc').addEventListener('click', () => {
+      sortTasksByCompletion('asc');
+    });
+
+    document.getElementById('sortByProgressDesc').addEventListener('click', () => {
+      sortTasksByCompletion('desc');
+    });
+
+    // 並び替え関数
+    function sortTasksByCompletion(order) {
+      const tasks = getTasks();
+      const searchQuery = document.getElementById('searchInput').value.trim();
+
+      tasks.sort((a, b) => {
+        const rateA = getCompletionRate(a);
+        const rateB = getCompletionRate(b);
+        return order === 'asc' ? rateA - rateB : rateB - rateA;
+      });
+
+      // 表示を更新
+      taskList.innerHTML = '';
+      tasks.forEach(task => {
+        const normalizedSearch = normalizeText(searchQuery);
+        if (
+          currentFilter === 'completed' && !task.completed ||
+          currentFilter === 'uncompleted' && task.completed ||
+          searchQuery && !normalizeText(task.text).includes(normalizedSearch)
+        ) return;
+      });
+
+      // 表示更新用に一時的に tasks を保存・上書き
+      localStorage.setItem('sortedTasks', JSON.stringify(tasks));
+      loadTasks(currentFilter, searchQuery);
+    }
+
+
+    // 初期読み込み
+    window.addEventListener('load', () => {
+      loadTasks();
+    });
+
+
+  </script>
+
+</body>
+
+</html>
